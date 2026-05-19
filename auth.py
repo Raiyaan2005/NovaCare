@@ -1,7 +1,8 @@
 import customtkinter as ctk
 from tkinter import messagebox
 import mysql.connector
-import hashlib
+import bcrypt
+from db import get_connection
 
 # ── Appearance ───────────────────────────────────────────────────────────────
 ctk.set_appearance_mode("dark")
@@ -26,16 +27,6 @@ FONT_LABEL = (_FF, 13)
 FONT_ENTRY = (_FF, 13)
 FONT_SMALL = (_FF, 11)
 
-DB_CONFIG = dict(host="localhost", user="root", password="moRRison@123", database="hospital")
-
-
-def _hash(password: str) -> str:
-    return hashlib.sha256(password.encode()).hexdigest()
-
-
-def _connect():
-    return mysql.connector.connect(**DB_CONFIG)
-
 
 class AuthApp(ctk.CTk):
 
@@ -54,7 +45,7 @@ class AuthApp(ctk.CTk):
     # ── Database setup ────────────────────────────────────────────────────────
     def _ensure_users_table(self):
         try:
-            conn = _connect()
+            conn = get_connection()
             cur = conn.cursor()
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS users (
@@ -228,11 +219,11 @@ class AuthApp(ctk.CTk):
             return
 
         try:
-            conn = _connect()
+            conn = get_connection()
             cur  = conn.cursor()
             cur.execute(
-                "SELECT id FROM users WHERE username=%s AND password_hash=%s",
-                (username, _hash(password)),
+                "SELECT id, password_hash FROM users WHERE username=%s",
+                (username,),
             )
             row = cur.fetchone()
             conn.close()
@@ -240,7 +231,7 @@ class AuthApp(ctk.CTk):
             messagebox.showerror("Database Error", f"Login failed:\n{e}")
             return
 
-        if row:
+        if row and bcrypt.checkpw(password.encode(), row[1].encode()):
             self._launch_main(row[0])
         else:
             messagebox.showerror("Login", "Incorrect username or password.")
@@ -262,11 +253,12 @@ class AuthApp(ctk.CTk):
             return
 
         try:
-            conn = _connect()
+            conn = get_connection()
             cur  = conn.cursor()
+            pw_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
             cur.execute(
                 "INSERT INTO users (username, password_hash, full_name) VALUES (%s, %s, %s)",
-                (username, _hash(password), full_name),
+                (username, pw_hash, full_name),
             )
             conn.commit()
             conn.close()

@@ -1,7 +1,8 @@
+import csv
 import customtkinter as ctk
-from tkinter import ttk, messagebox, StringVar, END, INSERT
-import mysql.connector
+from tkinter import ttk, messagebox, filedialog, StringVar, END, INSERT
 from datetime import datetime
+from db import get_connection
 
 # ── Appearance ──────────────────────────────────────────────────────────────
 ctk.set_appearance_mode("dark")
@@ -35,6 +36,13 @@ FONT_TABLE   = (_FF, 12)
 FONT_STATUS  = (_FF, 11)
 
 PLACEHOLDER = "YYYY-MM-DD"
+
+_COLUMNS = (
+    "Patient ID", "Name of Doctor", "Department", "Patient Name",
+    "Date of Birth", "Gender", "Patient Address", "Patient Age",
+    "Insurance Provider", "Blood Group", "Phone Number",
+    "Blood Pressure", "Date of Appointment",
+)
 
 
 # ── Date-field placeholder helpers ───────────────────────────────────────────
@@ -73,6 +81,10 @@ class HospitalApp(ctk.CTk):
 
     # ── String variables ──────────────────────────────────────────────────────
     def _init_vars(self):
+        self._all_rows  = []
+        self._sort_col  = None
+        self._sort_asc  = True
+        self._search_var = StringVar()
         self.doctorid       = StringVar()
         self.nameofdoctor   = StringVar()
         self.department     = StringVar()
@@ -309,10 +321,11 @@ class HospitalApp(ctk.CTk):
             ("Data Insert", self.input_data),
             ("Update",      self.update_display),
             ("Delete",      self.delete),
+            ("Export CSV",  self.export_csv),
             ("Clear",       self.clear),
             ("Exit",        self.exit),
         ]
-        btn_outer.columnconfigure(list(range(len(specs))), weight=1)
+        btn_outer.columnconfigure(list(range(len(specs) + 1)), weight=1)
 
         for col, (label, cmd) in enumerate(specs):
             ctk.CTkButton(
@@ -327,6 +340,18 @@ class HospitalApp(ctk.CTk):
                 command=cmd,
             ).grid(row=0, column=col, padx=10, pady=18, sticky="ew")
 
+        ctk.CTkButton(
+            btn_outer,
+            text="Delete Account",
+            font=FONT_BTN,
+            fg_color=BTN_FG,
+            hover_color=BTN_HOVER,
+            text_color="#e05555",
+            corner_radius=8,
+            height=44,
+            command=self.delete_account,
+        ).grid(row=0, column=len(specs), padx=10, pady=18, sticky="ew")
+
     # ── Bottom details / treeview ─────────────────────────────────────────────
     def _build_details_frame(self):
         details_outer = ctk.CTkFrame(
@@ -335,25 +360,50 @@ class HospitalApp(ctk.CTk):
         )
         details_outer.pack(fill="both", expand=True, padx=14, pady=(10, 4))
 
-        sec_row = ctk.CTkFrame(details_outer, fg_color="transparent")
-        sec_row.pack(anchor="w", padx=16, pady=(10, 4))
+        # Section header + search bar on the same row
+        header_row = ctk.CTkFrame(details_outer, fg_color="transparent")
+        header_row.pack(fill="x", padx=16, pady=(10, 6))
 
-        ctk.CTkFrame(sec_row, fg_color=ACCENT, width=4, height=22, corner_radius=2).pack(
+        sec_left = ctk.CTkFrame(header_row, fg_color="transparent")
+        sec_left.pack(side="left", fill="y")
+
+        ctk.CTkFrame(sec_left, fg_color=ACCENT, width=4, height=22, corner_radius=2).pack(
             side="left", padx=(0, 10)
         )
         ctk.CTkLabel(
-            sec_row,
+            sec_left,
             text="Appointment Records",
             font=FONT_SECTION,
             text_color=TEXT_PRIMARY,
         ).pack(side="left")
 
-        columns = (
-            "Patient ID", "Name of Doctor", "Department", "Patient Name",
-            "Date of Birth", "Gender", "Patient Address", "Patient Age",
-            "Insurance Provider", "Blood Group", "Phone Number",
-            "Blood Pressure", "Date of Appointment",
+        # Search bar (right side of header row)
+        search_frame = ctk.CTkFrame(header_row, fg_color="transparent")
+        search_frame.pack(side="right", fill="y")
+
+        ctk.CTkLabel(
+            search_frame, text="Search:",
+            font=FONT_STATUS, text_color=TEXT_MUTED,
+        ).pack(side="left", padx=(0, 6))
+
+        search_entry = ctk.CTkEntry(
+            search_frame, textvariable=self._search_var,
+            font=FONT_ENTRY, fg_color=BG_FRAME,
+            border_color=BORDER_COLOR, border_width=1,
+            text_color=TEXT_PRIMARY, height=30, width=220,
+            placeholder_text="Filter by any field…",
         )
+        search_entry.pack(side="left")
+
+        ctk.CTkButton(
+            search_frame, text="✕", width=30, height=30,
+            font=(_FF, 11), fg_color=BG_FRAME, hover_color=BORDER_COLOR,
+            text_color=TEXT_MUTED, border_width=1, border_color=BORDER_COLOR,
+            command=lambda: self._search_var.set(""),
+        ).pack(side="left", padx=(4, 0))
+
+        self._search_var.trace_add("write", self._apply_filter)
+
         col_widths = [60, 130, 90, 125, 80, 55, 170, 40, 110, 70, 100, 140, 120]
 
         tree_frame = ctk.CTkFrame(details_outer, fg_color=BG_FRAME, corner_radius=8)
@@ -366,7 +416,7 @@ class HospitalApp(ctk.CTk):
 
         self.hospital_table = ttk.Treeview(
             tree_frame,
-            columns=columns,
+            columns=_COLUMNS,
             show="headings",
             yscrollcommand=vsb.set,
             xscrollcommand=hsb.set,
@@ -375,8 +425,11 @@ class HospitalApp(ctk.CTk):
         vsb.configure(command=self.hospital_table.yview)
         hsb.configure(command=self.hospital_table.xview)
 
-        for col, width in zip(columns, col_widths):
-            self.hospital_table.heading(col, text=col)
+        for i, (col, width) in enumerate(zip(_COLUMNS, col_widths)):
+            self.hospital_table.heading(
+                col, text=col,
+                command=lambda c=i: self._sort_by(c),
+            )
             self.hospital_table.column(col, width=width, anchor="center", minwidth=40)
 
         self.hospital_table.pack(fill="both", expand=True)
@@ -495,87 +548,76 @@ class HospitalApp(ctk.CTk):
         self._update_status(f"Displaying patient: {self.patientname.get()}")
 
     def input_data(self):
-        conn = mysql.connector.connect(
-            host="localhost", user="root",
-            password="moRRison@123", database="hospital"
-        )
-        my_cursor = conn.cursor()
-        messagebox.showinfo(
-            "NovaCare",
-            "Reminder! Dates must be in the format 'YYYY-MM-DD'"
-        )
+        patient_id = self.patientid.get()
         dob        = self.dateofbirth.get()
         doa        = self.dateofapp.get()
         num        = self.number.get()
-        patient_id = self.patientid.get()
 
-        my_cursor.execute(
-            "SELECT PatientID FROM appointments WHERE PatientID = %s AND user_id = %s",
-            (patient_id, self.user_id)
-        )
-        result = my_cursor.fetchone()
-
-        if result:
-            messagebox.showerror(
-                "Error",
-                f"Patient with ID {patient_id} already exists. Use Update to modify."
-            )
-        elif patient_id == "":
+        if patient_id == "":
             messagebox.showerror("Error", "Patient ID must have a value")
-        elif patient_id.lower() in "abcdefghijklmnopqrstuvwxyz":
+            return
+        if patient_id.lower() in "abcdefghijklmnopqrstuvwxyz":
             messagebox.showerror("Error", "Patient ID must be an integer")
-        elif dob in ("", PLACEHOLDER) or doa in ("", PLACEHOLDER):
+            return
+        if dob in ("", PLACEHOLDER) or doa in ("", PLACEHOLDER):
             messagebox.showerror("Error", "All date fields must be in YYYY-MM-DD format")
-        elif len(num) != 10:
+            return
+        if len(num) != 10:
             messagebox.showerror("Error", "Phone number must be 10 digits")
-        else:
-            try:
-                my_cursor.execute(
-                    "INSERT INTO appointments "
-                    "(PatientID, NameofDoctor, Department, PatientName, PatientDateOfBirth, "
-                    "Gender, PatientAddress, PatientAge, InsuranceProvider, BloodGroup, "
-                    "PhoneNumber, BloodPressure, DateOfAppointment, "
-                    "DoctorID, Nationality, Email, Medication, FurtherInfo, user_id) "
-                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-                    (
-                        self.patientid.get(), self.nameofdoctor.get(),
-                        self.department.get(), self.patientname.get(),
-                        self.dateofbirth.get(), self.gender.get(),
-                        self.patientaddress.get(), self.patage.get(),
-                        self.insurance.get(), self.bloodgrp.get(),
-                        self.number.get(), self.bloodpressure.get(),
-                        self.dateofapp.get(), self.doctorid.get(),
-                        self.nationality.get(), self.email.get(),
-                        self.medication.get(), self.furtherinfo.get(),
-                        self.user_id,
-                    ),
-                )
-                conn.commit()
-                self.fetch_data()
-                messagebox.showinfo("Success", "Record inserted successfully")
-                self._update_status(f"Record inserted for patient: {self.patientname.get()}")
-            except Exception as e:
-                conn.rollback()
-                messagebox.showerror("Database Error", f"Failed to insert record:\n{e}")
+            return
 
-        conn.close()
+        messagebox.showinfo("NovaCare", "Reminder! Dates must be in the format 'YYYY-MM-DD'")
+
+        try:
+            conn = get_connection()
+            my_cursor = conn.cursor()
+            my_cursor.execute(
+                "SELECT PatientID FROM appointments WHERE PatientID = %s AND user_id = %s",
+                (patient_id, self.user_id)
+            )
+            if my_cursor.fetchone():
+                messagebox.showerror(
+                    "Error",
+                    f"Patient with ID {patient_id} already exists. Use Update to modify."
+                )
+                conn.close()
+                return
+            my_cursor.execute(
+                "INSERT INTO appointments "
+                "(PatientID, NameofDoctor, Department, PatientName, PatientDateOfBirth, "
+                "Gender, PatientAddress, PatientAge, InsuranceProvider, BloodGroup, "
+                "PhoneNumber, BloodPressure, DateOfAppointment, "
+                "DoctorID, Nationality, Email, Medication, FurtherInfo, user_id) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                (
+                    self.patientid.get(), self.nameofdoctor.get(),
+                    self.department.get(), self.patientname.get(),
+                    self.dateofbirth.get(), self.gender.get(),
+                    self.patientaddress.get(), self.patage.get(),
+                    self.insurance.get(), self.bloodgrp.get(),
+                    self.number.get(), self.bloodpressure.get(),
+                    self.dateofapp.get(), self.doctorid.get(),
+                    self.nationality.get(), self.email.get(),
+                    self.medication.get(), self.furtherinfo.get(),
+                    self.user_id,
+                ),
+            )
+            conn.commit()
+            conn.close()
+            self.fetch_data()
+            messagebox.showinfo("Success", "Record inserted successfully")
+            self._update_status(f"Record inserted for patient: {self.patientname.get()}")
+        except Exception as e:
+            messagebox.showerror("Database Error", f"Failed to insert record:\n{e}")
 
     def fetch_data(self):
         try:
-            conn = mysql.connector.connect(
-                host="localhost", user="root",
-                password="moRRison@123", database="hospital"
-            )
+            conn = get_connection()
             my_cursor = conn.cursor()
             my_cursor.execute("SELECT * FROM appointments WHERE user_id = %s", (self.user_id,))
-            rows = my_cursor.fetchall()
-
-            self.hospital_table.delete(*self.hospital_table.get_children())
-            for idx, row in enumerate(rows):
-                tag = "odd" if idx % 2 else "even"
-                self.hospital_table.insert("", END, values=row, tags=(tag,))
+            self._all_rows = my_cursor.fetchall()
             conn.close()
-            self._update_status("Data loaded", count=len(rows))
+            self._render_rows()
         except Exception as e:
             messagebox.showerror("Database Error", f"Failed to fetch data:\n{e}")
 
@@ -587,10 +629,7 @@ class HospitalApp(ctk.CTk):
             return
 
         try:
-            conn = mysql.connector.connect(
-                host="localhost", user="root",
-                password="moRRison@123", database="hospital"
-            )
+            conn = get_connection()
             cur = conn.cursor()
             cur.execute(
                 "SELECT PatientID, NameofDoctor, Department, PatientName, "
@@ -657,10 +696,7 @@ class HospitalApp(ctk.CTk):
             "Confirm you want to update this record?"
         )
         if choice:
-            conn = mysql.connector.connect(
-                host="localhost", user="root",
-                password="moRRison@123", database="hospital"
-            )
+            conn = get_connection()
             my_cursor = conn.cursor()
             my_cursor.execute(
                 "UPDATE appointments SET PatientID=%s, NameofDoctor=%s, Department=%s, "
@@ -685,30 +721,9 @@ class HospitalApp(ctk.CTk):
             conn.commit()
             conn.close()
             self._update_status(f"Record updated for patient: {self.patientname.get()}")
-        self.update_display_data()
-
-    def update_display_data(self):
-        conn = mysql.connector.connect(
-            host="localhost", user="root",
-            password="moRRison@123", database="hospital"
-        )
-        my_cursor = conn.cursor()
-        my_cursor.execute("SELECT * FROM appointments WHERE user_id = %s", (self.user_id,))
-        rows = my_cursor.fetchall()
-
-        self.hospital_table.delete(*self.hospital_table.get_children())
-        for idx, row in enumerate(rows):
-            tag = "odd" if idx % 2 else "even"
-            self.hospital_table.insert("", END, values=row, tags=(tag,))
-        conn.close()
-        self.record_count_label.configure(text=f"Records: {len(rows)}")
+            self.fetch_data()
 
     def delete(self):
-        conn = mysql.connector.connect(
-            host="localhost", user="root",
-            password="moRRison@123", database="hospital"
-        )
-        my_cursor = conn.cursor()
         choice = messagebox.askyesno(
             "NovaCare",
             "Confirm you want to delete this record?"
@@ -717,17 +732,114 @@ class HospitalApp(ctk.CTk):
             if self.patientid.get() == "":
                 messagebox.showerror("Error", "Please select a Patient ID to delete")
             else:
+                conn = get_connection()
+                my_cursor = conn.cursor()
                 my_cursor.execute(
                     "DELETE FROM appointments WHERE PatientID=%s AND user_id=%s",
                     (self.patientid.get(), self.user_id)
                 )
                 conn.commit()
                 conn.close()
-                self.fetch_data()
                 messagebox.showinfo("Delete", "Patient deleted successfully")
-                self.update_display_data()
+                self.fetch_data()
                 self._update_status("Record deleted")
         self.clear()
+
+    # ── Filter / sort / render ────────────────────────────────────────────────
+
+    def _render_rows(self):
+        term = self._search_var.get().lower()
+        rows = self._all_rows
+
+        if term:
+            rows = [r for r in rows if any(term in str(v).lower() for v in r[:13])]
+
+        if self._sort_col is not None:
+            col = self._sort_col
+            def _key(r):
+                v = r[col]
+                try:
+                    return (0, int(v))
+                except (ValueError, TypeError):
+                    return (1, str(v).lower())
+            rows = sorted(rows, key=_key, reverse=not self._sort_asc)
+
+        self.hospital_table.delete(*self.hospital_table.get_children())
+        for idx, row in enumerate(rows):
+            tag = "odd" if idx % 2 else "even"
+            self.hospital_table.insert("", END, values=row, tags=(tag,))
+
+        total = len(self._all_rows)
+        shown = len(rows)
+        if term:
+            self._update_status(f"Showing {shown} of {total} records", count=shown)
+        else:
+            self._update_status("Data loaded", count=total)
+
+    def _apply_filter(self, *_):
+        self._render_rows()
+
+    def _sort_by(self, col_idx):
+        if self._sort_col == col_idx:
+            self._sort_asc = not self._sort_asc
+        else:
+            self._sort_col = col_idx
+            self._sort_asc = True
+
+        for i, col in enumerate(_COLUMNS):
+            if i == self._sort_col:
+                arrow = " ▲" if self._sort_asc else " ▼"
+                self.hospital_table.heading(col, text=col + arrow)
+            else:
+                self.hospital_table.heading(col, text=col)
+
+        self._render_rows()
+
+    def export_csv(self):
+        rows = [
+            self.hospital_table.item(child)["values"]
+            for child in self.hospital_table.get_children()
+        ]
+        if not rows:
+            messagebox.showinfo("Export CSV", "No records to export.")
+            return
+
+        path = filedialog.asksaveasfilename(
+            defaultextension=".csv",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+            title="Export Records as CSV",
+        )
+        if not path:
+            return
+
+        with open(path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow(_COLUMNS)
+            writer.writerows(rows)
+
+        messagebox.showinfo("Export CSV", f"Exported {len(rows)} records to:\n{path}")
+        self._update_status(f"Exported {len(rows)} records to CSV")
+
+    def delete_account(self):
+        if not messagebox.askyesno(
+            "Delete Account",
+            "This will permanently delete your account and ALL your patient records.\n\nThis cannot be undone. Continue?",
+        ):
+            return
+        try:
+            conn = get_connection()
+            cur = conn.cursor()
+            cur.execute("DELETE FROM appointments WHERE user_id=%s", (self.user_id,))
+            cur.execute("DELETE FROM users WHERE id=%s", (self.user_id,))
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to delete account:\n{e}")
+            return
+        messagebox.showinfo("Account Deleted", "Your account has been deleted.")
+        self.destroy()
+        from auth import AuthApp
+        AuthApp().mainloop()
 
     def clear(self):
         for var in (

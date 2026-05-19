@@ -6,10 +6,11 @@ A desktop application for managing hospital patient records and appointments, bu
 
 ## Features
 
-- **Secure login & sign up** — per-user accounts with SHA-256 hashed passwords
+- **Secure login & sign up** — per-user accounts with bcrypt-hashed passwords
 - **Data isolation** — each user account sees and manages only its own patient records
 - **Patient records** — add, update, delete, and view full patient profiles
 - **Appointment management** — track doctor assignments and appointment dates
+- **Export to CSV** — one-click export of all appointment records
 - **Live search & table view** — scrollable appointment records with alternating row styling
 - **Patient summary panel** — one-click formatted summary of any selected record
 - **Refined dark UI** — consistent indigo-on-dark colour scheme throughout
@@ -20,15 +21,10 @@ A desktop application for managing hospital patient records and appointments, bu
 
 - Python 3.9+
 - MySQL 8.0+
-- Python packages:
-  ```
-  customtkinter
-  mysql-connector-python
-  ```
 
 Install dependencies:
 ```bash
-pip install customtkinter mysql-connector-python
+pip install -r requirements.txt
 ```
 
 ---
@@ -69,9 +65,9 @@ pip install customtkinter mysql-connector-python
 
 3. The `users` table and the `user_id` column on `appointments` are created automatically on first launch.
 
-4. Update the database credentials in both `hospital.py` and `auth.py` if yours differ from the defaults:
-   ```python
-   DB_CONFIG = dict(host="localhost", user="root", password="your_password", database="hospital")
+4. Copy `.env.example` to `.env` and fill in your database credentials:
+   ```bash
+   cp .env.example .env
    ```
 
 ---
@@ -96,8 +92,12 @@ python auth.py
 
 ```
 NovaCare/
-├── auth.py        # Login & sign up window (entry point)
-├── hospital.py    # Main patient management application
+├── auth.py          # Login & sign up window (entry point)
+├── hospital.py      # Main patient management application
+├── db.py            # Database connection (reads from .env)
+├── .env             # Your local credentials — never committed
+├── .env.example     # Template for setting up credentials
+├── requirements.txt
 └── README.md
 ```
 
@@ -109,5 +109,5 @@ NovaCare/
 |------------|-------------------------------|
 | GUI        | CustomTkinter (tkinter-based) |
 | Database   | MySQL via mysql-connector-python |
-| Auth       | SHA-256 password hashing      |
+| Auth       | bcrypt password hashing       |
 | Language   | Python 3                      |
