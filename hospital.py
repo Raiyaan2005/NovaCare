@@ -3,6 +3,8 @@ import customtkinter as ctk
 from tkinter import ttk, messagebox, filedialog, StringVar, END, INSERT
 from datetime import datetime
 from db import get_connection
+from validate import validate_patient_fields
+from records import filter_rows, sort_rows
 
 # ── Appearance ──────────────────────────────────────────────────────────────
 ctk.set_appearance_mode("dark")
@@ -553,17 +555,9 @@ class HospitalApp(ctk.CTk):
         doa        = self.dateofapp.get()
         num        = self.number.get()
 
-        if patient_id == "":
-            messagebox.showerror("Error", "Patient ID must have a value")
-            return
-        if patient_id.lower() in "abcdefghijklmnopqrstuvwxyz":
-            messagebox.showerror("Error", "Patient ID must be an integer")
-            return
-        if dob in ("", PLACEHOLDER) or doa in ("", PLACEHOLDER):
-            messagebox.showerror("Error", "All date fields must be in YYYY-MM-DD format")
-            return
-        if len(num) != 10:
-            messagebox.showerror("Error", "Phone number must be 10 digits")
+        error = validate_patient_fields(patient_id, dob, doa, num)
+        if error:
+            messagebox.showerror("Error", error)
             return
 
         messagebox.showinfo("NovaCare", "Reminder! Dates must be in the format 'YYYY-MM-DD'")
@@ -678,17 +672,12 @@ class HospitalApp(ctk.CTk):
         dob        = self.dateofbirth.get()
         num        = self.number.get()
 
-        if patient_id == "":
+        if not patient_id:
             messagebox.showerror("Error", "Please select a Patient ID to update")
             return
-        if patient_id.lower() in "abcdefghijklmnopqrstuvwxyz":
-            messagebox.showerror("Error", "Patient ID must be an integer")
-            return
-        if dob in ("", PLACEHOLDER) or doa in ("", PLACEHOLDER):
-            messagebox.showerror("Error", "Dates must be in the format YYYY-MM-DD")
-            return
-        if len(num) != 10:
-            messagebox.showerror("Error", "Phone number must be 10 digits")
+        error = validate_patient_fields(patient_id, dob, doa, num)
+        if error:
+            messagebox.showerror("Error", error)
             return
 
         choice = messagebox.askyesno(
@@ -749,20 +738,10 @@ class HospitalApp(ctk.CTk):
 
     def _render_rows(self):
         term = self._search_var.get().lower()
-        rows = self._all_rows
-
-        if term:
-            rows = [r for r in rows if any(term in str(v).lower() for v in r[:13])]
+        rows = filter_rows(self._all_rows, term)
 
         if self._sort_col is not None:
-            col = self._sort_col
-            def _key(r):
-                v = r[col]
-                try:
-                    return (0, int(v))
-                except (ValueError, TypeError):
-                    return (1, str(v).lower())
-            rows = sorted(rows, key=_key, reverse=not self._sort_asc)
+            rows = sort_rows(rows, self._sort_col, ascending=self._sort_asc)
 
         self.hospital_table.delete(*self.hospital_table.get_children())
         for idx, row in enumerate(rows):
