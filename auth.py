@@ -27,13 +27,21 @@ FONT_LABEL = (_FF, 13)
 FONT_ENTRY = (_FF, 13)
 FONT_SMALL = (_FF, 11)
 
+SECURITY_QUESTIONS = [
+    "What was the name of your first pet?",
+    "What city were you born in?",
+    "What is your mother's maiden name?",
+    "What was the name of your primary school?",
+    "What was the make of your first car?",
+]
+
 
 class AuthApp(ctk.CTk):
 
     def __init__(self):
         super().__init__()
         self.title("NovaCare")
-        self.geometry("460x520+530+150")
+        self.geometry("750x670+530+150")
         self.configure(fg_color=BG_ROOT)
         self.resizable(False, False)
 
@@ -59,7 +67,15 @@ class AuthApp(ctk.CTk):
             try:
                 cur.execute("ALTER TABLE appointments ADD COLUMN user_id INT NULL")
             except mysql.connector.Error:
-                pass  # column already exists
+                pass
+            try:
+                cur.execute("ALTER TABLE users ADD COLUMN security_question VARCHAR(255) DEFAULT ''")
+            except mysql.connector.Error:
+                pass
+            try:
+                cur.execute("ALTER TABLE users ADD COLUMN security_answer_hash VARCHAR(64) DEFAULT ''")
+            except mysql.connector.Error:
+                pass
             conn.commit()
             conn.close()
         except Exception as e:
@@ -153,7 +169,7 @@ class AuthApp(ctk.CTk):
         self.content.columnconfigure(0, weight=1)
 
         if mode == "login":
-            self.geometry("460x520")
+            self.geometry("610x710")
             self.mode_label.configure(text="Welcome back")
             self._set_tab_active("login")
             self.login_user = self._field("Username", row=0)
@@ -168,40 +184,79 @@ class AuthApp(ctk.CTk):
                 self.content, text="Don't have an account? Click Sign Up above.",
                 font=FONT_SMALL, text_color=TEXT_MUTED,
             ).grid(row=5, column=0, pady=(10, 0))
+            ctk.CTkButton(
+                self.content, text="Forgot Password?",
+                font=FONT_SMALL, fg_color="transparent", hover_color=BG_FRAME,
+                text_color=ACCENT, corner_radius=6, height=28, border_width=0,
+                command=lambda: self._show_mode("forgot"),
+            ).grid(row=6, column=0, pady=(2, 0))
 
-        else:
-            self.geometry("460x660")
+        elif mode == "signup":
+            self.geometry("750x710")
             self.mode_label.configure(text="Create your account")
             self._set_tab_active("signup")
-            self.signup_name    = self._field("Full Name",        row=0)
-            self.signup_user    = self._field("Username",         row=1)
-            self.signup_pass    = self._field("Password",         row=2, show="•")
-            self.signup_confirm = self._field("Confirm Password", row=3, show="•")
+
+            sf = ctk.CTkScrollableFrame(self.content, fg_color="transparent")
+            sf.pack(fill="both", expand=True)
+            sf.columnconfigure(0, weight=1)
+
+            self.signup_name    = self._field("Full Name",        row=0, parent=sf)
+            self.signup_user    = self._field("Username",         row=1, parent=sf)
+            self.signup_pass    = self._field("Password",         row=2, show="•", parent=sf)
+            self.signup_confirm = self._field("Confirm Password", row=3, show="•", parent=sf)
+            ctk.CTkLabel(
+                sf, text="Security Question",
+                font=FONT_LABEL, text_color=TEXT_MUTED, anchor="w",
+            ).grid(row=8, column=0, sticky="w", pady=(10, 2))
+            self.signup_question = ctk.CTkComboBox(
+                sf, values=SECURITY_QUESTIONS,
+                font=FONT_ENTRY, fg_color=BG_FRAME,
+                border_color=BORDER_COLOR, border_width=1,
+                text_color=TEXT_PRIMARY, height=38,
+                state="readonly",
+            )
+            self.signup_question.set(SECURITY_QUESTIONS[0])
+            self.signup_question.grid(row=9, column=0, sticky="ew")
+            self.signup_answer = self._field("Security Answer", row=5, parent=sf)
             ctk.CTkButton(
-                self.content, text="Create Account",
+                sf, text="Create Account",
                 font=FONT_BTN, fg_color=BTN_FG, hover_color=BTN_HOVER,
                 text_color=TEXT_BRIGHT, corner_radius=8, height=42,
                 command=self._do_signup,
-            ).grid(row=8, column=0, sticky="ew", pady=(22, 0))
+            ).grid(row=12, column=0, sticky="ew", pady=(22, 0))
             ctk.CTkLabel(
-                self.content, text="Already have an account? Click Login above.",
+                sf, text="Already have an account? Click Login above.",
                 font=FONT_SMALL, text_color=TEXT_MUTED,
-            ).grid(row=9, column=0, pady=(10, 0))
+            ).grid(row=13, column=0, pady=(10, 0))
+            self.after_idle(lambda: self._bind_scroll(sf, sf._parent_canvas))
 
-    def _field(self, label: str, row: int, show: str = "") -> ctk.CTkEntry:
+        elif mode == "forgot":
+            self.geometry("610x670")
+            self.mode_label.configure(text="Reset Password")
+            self._set_tab_active("")
+            self._show_forgot_step1()
+
+    def _field(self, label: str, row: int, show: str = "", parent=None) -> ctk.CTkEntry:
+        if parent is None:
+            parent = self.content
         ctk.CTkLabel(
-            self.content, text=label,
+            parent, text=label,
             font=FONT_LABEL, text_color=TEXT_MUTED, anchor="w",
         ).grid(row=row * 2, column=0, sticky="w", pady=(10, 2))
 
         entry = ctk.CTkEntry(
-            self.content,
+            parent,
             font=FONT_ENTRY, fg_color=BG_FRAME,
             border_color=BORDER_COLOR, border_width=1,
             text_color=TEXT_PRIMARY, height=38, show=show,
         )
         entry.grid(row=row * 2 + 1, column=0, sticky="ew")
         return entry
+
+    def _bind_scroll(self, widget, canvas):
+        widget.bind("<MouseWheel>", lambda e: canvas.yview_scroll(int(-e.delta), "units"), add="+")
+        for child in widget.winfo_children():
+            self._bind_scroll(child, canvas)
 
     def _set_tab_active(self, active: str):
         on  = dict(fg_color=BTN_FG,    hover_color=BTN_HOVER,   text_color=TEXT_BRIGHT)
@@ -242,6 +297,9 @@ class AuthApp(ctk.CTk):
         password  = self.signup_pass.get()
         confirm   = self.signup_confirm.get()
 
+        question = self.signup_question.get()
+        answer   = self.signup_answer.get().strip().lower()
+
         if not username or not password:
             messagebox.showerror("Sign Up", "Username and password are required.")
             return
@@ -251,14 +309,19 @@ class AuthApp(ctk.CTk):
         if len(password) < 6:
             messagebox.showerror("Sign Up", "Password must be at least 6 characters.")
             return
+        if not answer:
+            messagebox.showerror("Sign Up", "Please provide an answer to your security question.")
+            return
 
         try:
             conn = get_connection()
             cur  = conn.cursor()
-            pw_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+            pw_hash     = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+            answer_hash = bcrypt.hashpw(answer.encode(), bcrypt.gensalt()).decode()
             cur.execute(
-                "INSERT INTO users (username, password_hash, full_name) VALUES (%s, %s, %s)",
-                (username, pw_hash, full_name),
+                "INSERT INTO users (username, password_hash, full_name, security_question, security_answer_hash)"
+                " VALUES (%s, %s, %s, %s, %s)",
+                (username, pw_hash, full_name, question, answer_hash),
             )
             conn.commit()
             conn.close()
@@ -268,6 +331,136 @@ class AuthApp(ctk.CTk):
             messagebox.showerror("Sign Up", "That username is already taken.")
         except Exception as e:
             messagebox.showerror("Database Error", f"Sign up failed:\n{e}")
+
+    # ── Forgot-password flow ──────────────────────────────────────────────────
+    def _show_forgot_step1(self):
+        for w in self.content.winfo_children():
+            w.destroy()
+        self.content.columnconfigure(0, weight=1)
+        self.forgot_user = self._field("Username", row=0)
+        ctk.CTkButton(
+            self.content, text="Find Account",
+            font=FONT_BTN, fg_color=BTN_FG, hover_color=BTN_HOVER,
+            text_color=TEXT_BRIGHT, corner_radius=8, height=42,
+            command=self._do_forgot_find,
+        ).grid(row=2, column=0, sticky="ew", pady=(22, 0))
+
+    def _do_forgot_find(self):
+        username = self.forgot_user.get().strip()
+        if not username:
+            messagebox.showerror("Reset Password", "Please enter your username.")
+            return
+        try:
+            conn = get_connection()
+            cur  = conn.cursor()
+            cur.execute(
+                "SELECT security_question FROM users WHERE username=%s", (username,)
+            )
+            row = cur.fetchone()
+            conn.close()
+        except Exception as e:
+            messagebox.showerror("Database Error", f"Lookup failed:\n{e}")
+            return
+        if not row or not row[0]:
+            messagebox.showerror(
+                "Reset Password",
+                "No account found with that username, or the account has no security question set.",
+            )
+            return
+        self._show_forgot_step2(username, row[0])
+
+    def _show_forgot_step2(self, username: str, question: str):
+        for w in self.content.winfo_children():
+            w.destroy()
+        self.content.columnconfigure(0, weight=1)
+        ctk.CTkLabel(
+            self.content, text="Your Security Question",
+            font=FONT_LABEL, text_color=TEXT_MUTED, anchor="w",
+        ).grid(row=0, column=0, sticky="w", pady=(10, 2))
+        ctk.CTkLabel(
+            self.content, text=question,
+            font=FONT_ENTRY, text_color=TEXT_PRIMARY, anchor="w",
+            wraplength=620,
+        ).grid(row=1, column=0, sticky="w")
+        ctk.CTkLabel(
+            self.content, text="Your Answer",
+            font=FONT_LABEL, text_color=TEXT_MUTED, anchor="w",
+        ).grid(row=2, column=0, sticky="w", pady=(14, 2))
+        self.forgot_answer_entry = ctk.CTkEntry(
+            self.content,
+            font=FONT_ENTRY, fg_color=BG_FRAME,
+            border_color=BORDER_COLOR, border_width=1,
+            text_color=TEXT_PRIMARY, height=38,
+        )
+        self.forgot_answer_entry.grid(row=3, column=0, sticky="ew")
+        ctk.CTkButton(
+            self.content, text="Verify Answer",
+            font=FONT_BTN, fg_color=BTN_FG, hover_color=BTN_HOVER,
+            text_color=TEXT_BRIGHT, corner_radius=8, height=42,
+            command=lambda: self._do_forgot_verify(username),
+        ).grid(row=4, column=0, sticky="ew", pady=(22, 0))
+
+    def _do_forgot_verify(self, username: str):
+        answer = self.forgot_answer_entry.get().strip().lower()
+        if not answer:
+            messagebox.showerror("Reset Password", "Please enter your answer.")
+            return
+        try:
+            conn = get_connection()
+            cur  = conn.cursor()
+            cur.execute(
+                "SELECT security_answer_hash FROM users WHERE username=%s", (username,)
+            )
+            row = cur.fetchone()
+            conn.close()
+        except Exception as e:
+            messagebox.showerror("Database Error", f"Verification failed:\n{e}")
+            return
+        if not row or not bcrypt.checkpw(answer.encode(), row[0].encode()):
+            messagebox.showerror("Reset Password", "Incorrect answer. Please try again.")
+            return
+        self._show_forgot_step3(username)
+
+    def _show_forgot_step3(self, username: str):
+        for w in self.content.winfo_children():
+            w.destroy()
+        self.content.columnconfigure(0, weight=1)
+        self.forgot_new_pass     = self._field("New Password",      row=0, show="•")
+        self.forgot_confirm_pass = self._field("Confirm Password",  row=1, show="•")
+        ctk.CTkButton(
+            self.content, text="Reset Password",
+            font=FONT_BTN, fg_color=BTN_FG, hover_color=BTN_HOVER,
+            text_color=TEXT_BRIGHT, corner_radius=8, height=42,
+            command=lambda: self._do_reset_password(username),
+        ).grid(row=4, column=0, sticky="ew", pady=(22, 0))
+
+    def _do_reset_password(self, username: str):
+        new_pass = self.forgot_new_pass.get()
+        confirm  = self.forgot_confirm_pass.get()
+        if not new_pass:
+            messagebox.showerror("Reset Password", "Please enter a new password.")
+            return
+        if new_pass != confirm:
+            messagebox.showerror("Reset Password", "Passwords do not match.")
+            return
+        if len(new_pass) < 6:
+            messagebox.showerror("Reset Password", "Password must be at least 6 characters.")
+            return
+        try:
+            conn = get_connection()
+            cur  = conn.cursor()
+            pw_hash = bcrypt.hashpw(new_pass.encode(), bcrypt.gensalt()).decode()
+            cur.execute(
+                "UPDATE users SET password_hash=%s WHERE username=%s",
+                (pw_hash, username),
+            )
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            messagebox.showerror("Database Error", f"Password reset failed:\n{e}")
+            return
+        messagebox.showinfo("Reset Password", "Password reset successfully! Please log in.")
+        self._show_mode("login")
 
     def _launch_main(self, user_id: int):
         self.destroy()

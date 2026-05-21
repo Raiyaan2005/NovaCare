@@ -1,12 +1,12 @@
 import pytest
 from records import filter_rows, sort_rows
 
-# 13-column sample rows matching the treeview column order
+# 12-column sample rows matching the treeview column order (no Date of Birth)
 ROWS = [
-    ("1",  "Dr. Smith", "Cardiology", "Alice Brown",  "1990-05-12", "F", "123 Main St", 34, "Blue Cross", "A+",  "5551234567", "120/80", "2024-06-01"),
-    ("2",  "Dr. Jones", "Neurology",  "Bob White",    "1985-11-22", "M", "456 Oak Ave",  39, "Aetna",      "O-",  "5559876543", "110/70", "2024-07-15"),
-    ("3",  "Dr. Smith", "Cardiology", "Carol Black",  "2000-03-07", "F", "789 Pine Rd",  24, "Blue Cross", "B+",  "5550001111", "130/85", "2024-08-20"),
-    ("10", "Dr. Lee",   "Pediatrics", "Dan Green",    "2010-08-30", "M", "321 Elm St",   14, "Cigna",      "AB+", "5552223333", "90/60",  "2024-09-05"),
+    ("1",  "Dr. Smith", "Cardiology", "Alice Brown", "F", "123 Main St", 34, "Blue Cross", "A+",  "5551234567", "120/80", "2024-06-01"),
+    ("2",  "Dr. Jones", "Neurology",  "Bob White",   "M", "456 Oak Ave",  39, "Aetna",      "O-",  "5559876543", "110/70", "2024-07-15"),
+    ("3",  "Dr. Smith", "Cardiology", "Carol Black", "F", "789 Pine Rd",  24, "Blue Cross", "B+",  "5550001111", "130/85", "2024-08-20"),
+    ("10", "Dr. Lee",   "Pediatrics", "Dan Green",   "M", "321 Elm St",   14, "Cigna",      "AB+", "5552223333", "90/60",  "2024-09-05"),
 ]
 
 

@@ -41,7 +41,7 @@ PLACEHOLDER = "YYYY-MM-DD"
 
 _COLUMNS = (
     "Patient ID", "Name of Doctor", "Department", "Patient Name",
-    "Date of Birth", "Gender", "Patient Address", "Patient Age",
+    "Gender", "Patient Address", "Patient Age",
     "Insurance Provider", "Blood Group", "Phone Number",
     "Blood Pressure", "Date of Appointment",
 )
@@ -64,7 +64,7 @@ def on_focus_out(event, entry_widget):
 # ── Application ───────────────────────────────────────────────────────────────
 class HospitalApp(ctk.CTk):
 
-    def __init__(self, user_id=None):
+    def __init__(self, user_id: int):
         super().__init__()
         self.user_id = user_id
         self.title("NovaCare")
@@ -86,6 +86,7 @@ class HospitalApp(ctk.CTk):
         self._all_rows  = []
         self._sort_col  = None
         self._sort_asc  = True
+        self._selected_patient_id = None
         self._search_var = StringVar()
         self.doctorid       = StringVar()
         self.nameofdoctor   = StringVar()
@@ -299,12 +300,12 @@ class HospitalApp(ctk.CTk):
 
         self.txtdisplay = ctk.CTkTextbox(
             right_card,
-            font=("Menlo", 12),
+            font=("Menlo", 15),
             fg_color=BG_FRAME,
             border_color=BORDER_COLOR,
             border_width=1,
             text_color=TEXT_PRIMARY,
-            state="normal",
+            state="disabled",
             wrap="none",
         )
         self.txtdisplay.pack(fill="both", expand=True, padx=14, pady=(0, 14))
@@ -406,7 +407,7 @@ class HospitalApp(ctk.CTk):
 
         self._search_var.trace_add("write", self._apply_filter)
 
-        col_widths = [60, 130, 90, 125, 80, 55, 170, 40, 110, 70, 100, 140, 120]
+        col_widths = [60, 130, 90, 125, 55, 170, 40, 110, 70, 100, 140, 120]
 
         tree_frame = ctk.CTkFrame(details_outer, fg_color=BG_FRAME, corner_radius=8)
         tree_frame.pack(fill="both", expand=True, padx=12, pady=(0, 12))
@@ -547,6 +548,7 @@ class HospitalApp(ctk.CTk):
         self.txtdisplay.configure(state="normal")
         self.txtdisplay.delete("1.0", END)
         self.txtdisplay.insert(INSERT, text)
+        self.txtdisplay.configure(state="disabled")
         self._update_status(f"Displaying patient: {self.patientname.get()}")
 
     def input_data(self):
@@ -608,7 +610,13 @@ class HospitalApp(ctk.CTk):
         try:
             conn = get_connection()
             my_cursor = conn.cursor()
-            my_cursor.execute("SELECT * FROM appointments WHERE user_id = %s", (self.user_id,))
+            my_cursor.execute(
+                "SELECT PatientID, NameofDoctor, Department, PatientName, "
+                "Gender, PatientAddress, PatientAge, InsuranceProvider, "
+                "BloodGroup, PhoneNumber, BloodPressure, DateOfAppointment "
+                "FROM appointments WHERE user_id = %s",
+                (self.user_id,)
+            )
             self._all_rows = my_cursor.fetchall()
             conn.close()
             self._render_rows()
@@ -642,19 +650,20 @@ class HospitalApp(ctk.CTk):
         if not row:
             return
 
-        self.patientid.set(row[0])
-        self.nameofdoctor.set(row[1])
-        self.department.set(row[2])
-        self.patientname.set(row[3])
-        self.dateofbirth.set(row[4])
-        self.gender.set(row[5])
-        self.patientaddress.set(row[6])
-        self.patage.set(row[7])
-        self.insurance.set(row[8])
-        self.bloodgrp.set(row[9])
-        self.number.set(row[10])
-        self.bloodpressure.set(row[11])
-        self.dateofapp.set(row[12])
+        self._selected_patient_id = str(row[0])
+        self.patientid.set(row[0] or "")
+        self.nameofdoctor.set(row[1] or "")
+        self.department.set(row[2] or "")
+        self.patientname.set(row[3] or "")
+        self.dateofbirth.set(row[4] or "")
+        self.gender.set(row[5] or "")
+        self.patientaddress.set(row[6] or "")
+        self.patage.set(row[7] or "")
+        self.insurance.set(row[8] or "")
+        self.bloodgrp.set(row[9] or "")
+        self.number.set(row[10] or "")
+        self.bloodpressure.set(row[11] or "")
+        self.dateofapp.set(row[12] or "")
         self.doctorid.set(row[13] or "")
         self.nationality.set(row[14] or "")
         self.email.set(row[15] or "")
@@ -680,37 +689,60 @@ class HospitalApp(ctk.CTk):
             messagebox.showerror("Error", error)
             return
 
-        choice = messagebox.askyesno(
-            "NovaCare",
-            "Confirm you want to update this record?"
-        )
+        if not self._selected_patient_id:
+            messagebox.showerror("Error", "Please select a record from the table to update")
+            return
+
+        new_id = self.patientid.get()
+        if new_id != self._selected_patient_id:
+            try:
+                conn = get_connection()
+                cur  = conn.cursor()
+                cur.execute(
+                    "SELECT 1 FROM appointments WHERE PatientID=%s AND user_id=%s",
+                    (new_id, self.user_id),
+                )
+                exists = cur.fetchone()
+                conn.close()
+            except Exception as e:
+                messagebox.showerror("Database Error", f"Failed to validate Patient ID:\n{e}")
+                return
+            if exists:
+                messagebox.showerror("Error", f"Patient ID {new_id} already exists.")
+                return
+
+        choice = messagebox.askyesno("NovaCare", "Confirm you want to update this record?")
         if choice:
-            conn = get_connection()
-            my_cursor = conn.cursor()
-            my_cursor.execute(
-                "UPDATE appointments SET PatientID=%s, NameofDoctor=%s, Department=%s, "
-                "PatientName=%s, PatientDateOfBirth=%s, PatientAddress=%s, PatientAge=%s, "
-                "Gender=%s, InsuranceProvider=%s, BloodGroup=%s, PhoneNumber=%s, "
-                "BloodPressure=%s, DateOfAppointment=%s, "
-                "DoctorID=%s, Nationality=%s, Email=%s, Medication=%s, FurtherInfo=%s "
-                "WHERE PatientID=%s AND user_id=%s",
-                (
-                    self.patientid.get(), self.nameofdoctor.get(),
-                    self.department.get(), self.patientname.get(),
-                    self.dateofbirth.get(), self.patientaddress.get(),
-                    self.patage.get(), self.gender.get(),
-                    self.insurance.get(), self.bloodgrp.get(),
-                    self.number.get(), self.bloodpressure.get(),
-                    self.dateofapp.get(), self.doctorid.get(),
-                    self.nationality.get(), self.email.get(),
-                    self.medication.get(), self.furtherinfo.get(),
-                    self.patientid.get(), self.user_id,
-                ),
-            )
-            conn.commit()
-            conn.close()
-            self._update_status(f"Record updated for patient: {self.patientname.get()}")
-            self.fetch_data()
+            try:
+                conn = get_connection()
+                my_cursor = conn.cursor()
+                my_cursor.execute(
+                    "UPDATE appointments SET PatientID=%s, NameofDoctor=%s, Department=%s, "
+                    "PatientName=%s, PatientDateOfBirth=%s, PatientAddress=%s, PatientAge=%s, "
+                    "Gender=%s, InsuranceProvider=%s, BloodGroup=%s, PhoneNumber=%s, "
+                    "BloodPressure=%s, DateOfAppointment=%s, "
+                    "DoctorID=%s, Nationality=%s, Email=%s, Medication=%s, FurtherInfo=%s "
+                    "WHERE PatientID=%s AND user_id=%s",
+                    (
+                        new_id, self.nameofdoctor.get(),
+                        self.department.get(), self.patientname.get(),
+                        self.dateofbirth.get(), self.patientaddress.get(),
+                        self.patage.get(), self.gender.get(),
+                        self.insurance.get(), self.bloodgrp.get(),
+                        self.number.get(), self.bloodpressure.get(),
+                        self.dateofapp.get(), self.doctorid.get(),
+                        self.nationality.get(), self.email.get(),
+                        self.medication.get(), self.furtherinfo.get(),
+                        self._selected_patient_id, self.user_id,
+                    ),
+                )
+                conn.commit()
+                conn.close()
+                self._selected_patient_id = new_id
+                self._update_status(f"Record updated for patient: {self.patientname.get()}")
+                self.fetch_data()
+            except Exception as e:
+                messagebox.showerror("Database Error", f"Failed to update record:\n{e}")
 
     def delete(self):
         choice = messagebox.askyesno(
@@ -721,17 +753,20 @@ class HospitalApp(ctk.CTk):
             if self.patientid.get() == "":
                 messagebox.showerror("Error", "Please select a Patient ID to delete")
             else:
-                conn = get_connection()
-                my_cursor = conn.cursor()
-                my_cursor.execute(
-                    "DELETE FROM appointments WHERE PatientID=%s AND user_id=%s",
-                    (self.patientid.get(), self.user_id)
-                )
-                conn.commit()
-                conn.close()
-                messagebox.showinfo("Delete", "Patient deleted successfully")
-                self.fetch_data()
-                self._update_status("Record deleted")
+                try:
+                    conn = get_connection()
+                    my_cursor = conn.cursor()
+                    my_cursor.execute(
+                        "DELETE FROM appointments WHERE PatientID=%s AND user_id=%s",
+                        (self.patientid.get(), self.user_id)
+                    )
+                    conn.commit()
+                    conn.close()
+                    messagebox.showinfo("Delete", "Patient deleted successfully")
+                    self.fetch_data()
+                    self._update_status("Record deleted")
+                except Exception as e:
+                    messagebox.showerror("Database Error", f"Failed to delete record:\n{e}")
         self.clear()
 
     # ── Filter / sort / render ────────────────────────────────────────────────
@@ -821,6 +856,7 @@ class HospitalApp(ctk.CTk):
         AuthApp().mainloop()
 
     def clear(self):
+        self._selected_patient_id = None
         for var in (
             self.doctorid, self.nameofdoctor, self.department, self.gender,
             self.patage, self.insurance, self.bloodgrp, self.nationality,
@@ -838,6 +874,7 @@ class HospitalApp(ctk.CTk):
 
         self.txtdisplay.configure(state="normal")
         self.txtdisplay.delete("1.0", END)
+        self.txtdisplay.configure(state="disabled")
 
         for item in self.hospital_table.selection():
             self.hospital_table.selection_remove(item)
@@ -851,5 +888,6 @@ class HospitalApp(ctk.CTk):
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    app = HospitalApp()
-    app.mainloop()
+    import sys
+    print("Error: hospital.py cannot be run directly. Please run auth.py to launch NovaCare.")
+    sys.exit(1)

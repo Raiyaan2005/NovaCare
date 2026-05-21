@@ -9,6 +9,6 @@ def validate_patient_fields(patient_id, dob, doa, phone):
         return "Patient ID must be an integer"
     if dob in ("", PLACEHOLDER) or doa in ("", PLACEHOLDER):
         return "All date fields must be in YYYY-MM-DD format"
-    if len(phone) != 10:
+    if not phone.isdigit() or len(phone) != 10:
         return "Phone number must be 10 digits"
     return None
