@@ -41,29 +41,31 @@ pip install -r requirements.txt
    USE hospital;
 
    CREATE TABLE appointments (
-       PatientID          VARCHAR(20),
+       PatientID          INT AUTO_INCREMENT PRIMARY KEY,
        NameofDoctor       VARCHAR(100),
-       Department         VARCHAR(100),
+       Department         VARCHAR(50),
        PatientName        VARCHAR(100),
        PatientDateOfBirth DATE,
-       Gender             VARCHAR(20),
+       Gender             ENUM('Male', 'Female', 'Other'),
        PatientAddress     VARCHAR(255),
        PatientAge         INT,
        InsuranceProvider  VARCHAR(100),
-       BloodGroup         VARCHAR(10),
-       PhoneNumber        VARCHAR(15),
-       BloodPressure      VARCHAR(30),
+       BloodGroup         VARCHAR(5),
+       PhoneNumber        VARCHAR(20),
+       BloodPressure      TEXT,
        DateOfAppointment  DATE,
-       DoctorID           VARCHAR(20),
-       Nationality        VARCHAR(50),
-       Email              VARCHAR(100),
+       DoctorID           VARCHAR(50),
+       Nationality        VARCHAR(100),
+       Email              VARCHAR(150),
        Medication         VARCHAR(255),
-       FurtherInfo        TEXT,
+       FurtherInfo        VARCHAR(255),
        user_id            INT NULL
    );
+
+   CREATE INDEX idx_user_id ON appointments(user_id);
    ```
 
-3. The `users` table and the `user_id` column on `appointments` are created automatically on first launch.
+3. The `users` table is created automatically on first launch.
 
 4. Copy `.env.example` to `.env` and fill in your database credentials:
    ```bash
@@ -94,7 +96,10 @@ python auth.py
 NovaCare/
 ├── auth.py          # Login & sign up window (entry point)
 ├── hospital.py      # Main patient management application
-├── db.py            # Database connection (reads from .env)
+├── db.py            # Database connection pool (reads from .env)
+├── records.py       # Pure filtering and sorting logic
+├── validate.py      # Input validation logic
+├── tests/           # Pytest test suite
 ├── .env             # Your local credentials — never committed
 ├── .env.example     # Template for setting up credentials
 ├── requirements.txt
@@ -108,6 +113,6 @@ NovaCare/
 | Layer      | Technology                    |
 |------------|-------------------------------|
 | GUI        | CustomTkinter (tkinter-based) |
-| Database   | MySQL via mysql-connector-python |
+| Database   | MySQL via mysql-connector-python (connection pooling) |
 | Auth       | bcrypt password hashing       |
 | Language   | Python 3                      |

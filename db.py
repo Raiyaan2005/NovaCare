@@ -1,5 +1,5 @@
 import os
-from mysql.connector import connect
+from mysql.connector import pooling
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -11,6 +11,8 @@ _CONFIG = dict(
     database=os.getenv("DB_NAME", "hospital"),
 )
 
+_pool = pooling.MySQLConnectionPool(pool_name="novacare", pool_size=5, **_CONFIG)
+
 
 def get_connection():
-    return connect(**_CONFIG)
+    return _pool.get_connection()

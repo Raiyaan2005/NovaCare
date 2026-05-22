@@ -69,6 +69,10 @@ class AuthApp(ctk.CTk):
             except mysql.connector.Error:
                 pass
             try:
+                cur.execute("CREATE INDEX idx_user_id ON appointments(user_id)")
+            except mysql.connector.Error:
+                pass
+            try:
                 cur.execute("ALTER TABLE users ADD COLUMN security_question VARCHAR(255) DEFAULT ''")
             except mysql.connector.Error:
                 pass

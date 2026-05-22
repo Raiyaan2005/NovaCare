@@ -4,7 +4,7 @@ from tkinter import ttk, messagebox, filedialog, StringVar, END, INSERT
 from datetime import datetime
 from db import get_connection
 from validate import validate_patient_fields
-from records import filter_rows, sort_rows
+from records import sort_rows
 
 # ── Appearance ──────────────────────────────────────────────────────────────
 ctk.set_appearance_mode("dark")
@@ -83,9 +83,10 @@ class HospitalApp(ctk.CTk):
 
     # ── String variables ──────────────────────────────────────────────────────
     def _init_vars(self):
-        self._all_rows  = []
-        self._sort_col  = None
-        self._sort_asc  = True
+        self._all_rows    = []
+        self._total_count = 0
+        self._sort_col    = None
+        self._sort_asc    = True
         self._selected_patient_id = None
         self._search_var = StringVar()
         self.doctorid       = StringVar()
@@ -606,18 +607,41 @@ class HospitalApp(ctk.CTk):
         except Exception as e:
             messagebox.showerror("Database Error", f"Failed to insert record:\n{e}")
 
-    def fetch_data(self):
+    def fetch_data(self, term=""):
         try:
             conn = get_connection()
-            my_cursor = conn.cursor()
-            my_cursor.execute(
-                "SELECT PatientID, NameofDoctor, Department, PatientName, "
-                "Gender, PatientAddress, PatientAge, InsuranceProvider, "
-                "BloodGroup, PhoneNumber, BloodPressure, DateOfAppointment "
-                "FROM appointments WHERE user_id = %s",
-                (self.user_id,)
-            )
-            self._all_rows = my_cursor.fetchall()
+            cur = conn.cursor()
+            if term:
+                like = f"%{term}%"
+                cur.execute(
+                    "SELECT PatientID, NameofDoctor, Department, PatientName, "
+                    "Gender, PatientAddress, PatientAge, InsuranceProvider, "
+                    "BloodGroup, PhoneNumber, BloodPressure, DateOfAppointment "
+                    "FROM appointments WHERE user_id = %s AND ("
+                    "PatientID LIKE %s OR NameofDoctor LIKE %s OR Department LIKE %s OR "
+                    "PatientName LIKE %s OR Gender LIKE %s OR PatientAddress LIKE %s OR "
+                    "CAST(PatientAge AS CHAR) LIKE %s OR InsuranceProvider LIKE %s OR "
+                    "BloodGroup LIKE %s OR PhoneNumber LIKE %s OR BloodPressure LIKE %s OR "
+                    "CAST(DateOfAppointment AS CHAR) LIKE %s)",
+                    (self.user_id, like, like, like, like, like, like,
+                     like, like, like, like, like, like)
+                )
+                self._all_rows = cur.fetchall()
+                cur.execute(
+                    "SELECT COUNT(*) FROM appointments WHERE user_id = %s",
+                    (self.user_id,)
+                )
+                self._total_count = cur.fetchone()[0]
+            else:
+                cur.execute(
+                    "SELECT PatientID, NameofDoctor, Department, PatientName, "
+                    "Gender, PatientAddress, PatientAge, InsuranceProvider, "
+                    "BloodGroup, PhoneNumber, BloodPressure, DateOfAppointment "
+                    "FROM appointments WHERE user_id = %s",
+                    (self.user_id,)
+                )
+                self._all_rows = cur.fetchall()
+                self._total_count = len(self._all_rows)
             conn.close()
             self._render_rows()
         except Exception as e:
@@ -772,9 +796,7 @@ class HospitalApp(ctk.CTk):
     # ── Filter / sort / render ────────────────────────────────────────────────
 
     def _render_rows(self):
-        term = self._search_var.get().lower()
-        rows = filter_rows(self._all_rows, term)
-
+        rows = self._all_rows
         if self._sort_col is not None:
             rows = sort_rows(rows, self._sort_col, ascending=self._sort_asc)
 
@@ -783,15 +805,14 @@ class HospitalApp(ctk.CTk):
             tag = "odd" if idx % 2 else "even"
             self.hospital_table.insert("", END, values=row, tags=(tag,))
 
-        total = len(self._all_rows)
         shown = len(rows)
-        if term:
-            self._update_status(f"Showing {shown} of {total} records", count=shown)
+        if self._search_var.get():
+            self._update_status(f"Showing {shown} of {self._total_count} records", count=shown)
         else:
-            self._update_status("Data loaded", count=total)
+            self._update_status("Data loaded", count=shown)
 
     def _apply_filter(self, *_):
-        self._render_rows()
+        self.fetch_data(self._search_var.get())
 
     def _sort_by(self, col_idx):
         if self._sort_col == col_idx:
