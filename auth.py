@@ -41,9 +41,11 @@ class AuthApp(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("NovaCare")
-        self.geometry("750x670+530+150")
+        screen_w = self.winfo_screenwidth()
+        screen_h = self.winfo_screenheight()
+        self.geometry(f"{screen_w}x{screen_h}+0+0")
         self.configure(fg_color=BG_ROOT)
-        self.resizable(False, False)
+        self.resizable(True, True)
 
         self._ensure_users_table()
         self._build_header()
@@ -121,18 +123,28 @@ class AuthApp(ctk.CTk):
 
     # ── Auth card ─────────────────────────────────────────────────────────────
     def _build_card(self):
-        wrapper = ctk.CTkFrame(self, fg_color=BG_ROOT)
-        wrapper.pack(fill="both", expand=True, padx=40, pady=28)
+        outer = ctk.CTkFrame(self, fg_color=BG_ROOT)
+        outer.pack(fill="both", expand=True)
+        outer.grid_columnconfigure(0, weight=1)
+        outer.grid_rowconfigure(0, weight=1)
 
         self.card = ctk.CTkFrame(
-            wrapper, fg_color=BG_PANEL, corner_radius=14,
+            outer, fg_color=BG_ROOT, corner_radius=14,
             border_width=1, border_color=BORDER_COLOR,
         )
-        self.card.pack(fill="both", expand=True)
+        self.card.grid(row=0, column=0, sticky="nsew", padx=80, pady=40)
+
+        # Side spacers (cols 0 & 2) push the 680px center column to mid-screen
+        self.card.columnconfigure(0, weight=1)
+        self.card.columnconfigure(1, minsize=680, weight=0)
+        self.card.columnconfigure(2, weight=1)
+        self.card.rowconfigure(0, weight=0)
+        self.card.rowconfigure(1, weight=0)
+        self.card.rowconfigure(2, weight=1)
 
         # Login / Sign Up toggle
         toggle = ctk.CTkFrame(self.card, fg_color=BG_FRAME, corner_radius=8)
-        toggle.pack(fill="x", padx=24, pady=(24, 0))
+        toggle.grid(row=0, column=1, sticky="ew", pady=(60, 0))
 
         self.login_tab = ctk.CTkButton(
             toggle, text="Login",
@@ -150,7 +162,7 @@ class AuthApp(ctk.CTk):
 
         # Section accent line + mode title
         mode_row = ctk.CTkFrame(self.card, fg_color="transparent")
-        mode_row.pack(anchor="w", padx=24, pady=(20, 0))
+        mode_row.grid(row=1, column=1, sticky="w", pady=(20, 0))
 
         ctk.CTkFrame(mode_row, fg_color=ACCENT, width=4, height=22, corner_radius=2).pack(
             side="left", padx=(0, 10)
@@ -163,7 +175,7 @@ class AuthApp(ctk.CTk):
 
         # Dynamic content area
         self.content = ctk.CTkFrame(self.card, fg_color="transparent")
-        self.content.pack(fill="both", expand=True, padx=24, pady=(10, 24))
+        self.content.grid(row=2, column=1, sticky="nsew", pady=(10, 60))
 
     # ── Mode switching ────────────────────────────────────────────────────────
     def _show_mode(self, mode: str):
@@ -173,7 +185,6 @@ class AuthApp(ctk.CTk):
         self.content.columnconfigure(0, weight=1)
 
         if mode == "login":
-            self.geometry("610x710")
             self.mode_label.configure(text="Welcome back")
             self._set_tab_active("login")
             self.login_user = self._field("Username", row=0)
@@ -196,7 +207,6 @@ class AuthApp(ctk.CTk):
             ).grid(row=6, column=0, pady=(2, 0))
 
         elif mode == "signup":
-            self.geometry("750x710")
             self.mode_label.configure(text="Create your account")
             self._set_tab_active("signup")
 
@@ -235,7 +245,6 @@ class AuthApp(ctk.CTk):
             self.after_idle(lambda: self._bind_scroll(sf, sf._parent_canvas))
 
         elif mode == "forgot":
-            self.geometry("610x670")
             self.mode_label.configure(text="Reset Password")
             self._set_tab_active("")
             self._show_forgot_step1()
